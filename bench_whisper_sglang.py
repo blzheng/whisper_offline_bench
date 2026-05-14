@@ -111,6 +111,8 @@ class BenchmarkConfig:
     device: str
     dtype: str
     trust_remote_code: bool
+    profile: bool = False
+    profile_dir: str = "sglang_profile"
 
 
 @dataclass
@@ -448,6 +450,82 @@ class WhisperOfflineBenchmark:
 
         return all_metrics
 
+    def run_profiling(self) -> List[BatchMetrics]:
+        """Run benchmark with torch profiler via SGLang's built-in profiling."""
+        print("\n" + "=" * 60)
+        print("WHISPER OFFLINE BENCHMARK - SGLang (PROFILING)")
+        print("=" * 60)
+        print(f"Model: {self.config.model}")
+        print(f"Device: {self.config.device}")
+        print(f"Batch Sizes: {self.config.batch_sizes}")
+        print(f"Iterations per batch: {self.config.num_iterations}")
+        print(f"Cores: {self.config.cores or 'auto'}")
+        print(f"Tensor Parallel: {self.config.tp}")
+        print(f"Profile Dir: {self.config.profile_dir}")
+
+        # Set profiler env var
+        os.environ["SGLANG_TORCH_PROFILER_DIR"] = self.config.profile_dir
+        os.makedirs(self.config.profile_dir, exist_ok=True)
+
+        # Initialize model
+        self.init_model()
+
+        # Preprocess audio
+        num_valid = self.preprocess_audio_files()
+        print(f"Loaded {num_valid} valid audio files into cache")
+
+        # Warmup
+        if not self.run_warmup():
+            print("\nERROR: Warmup failed. Aborting benchmark.")
+            sys.exit(1)
+
+        # Start profiler
+        print("\nProfiling enabled - starting profiler...")
+        known_files = set(os.listdir(self.config.profile_dir))
+        self.engine.start_profile()
+
+        # Run benchmarks for each batch size
+        all_metrics: List[BatchMetrics] = []
+
+        for batch_size in sorted(self.config.batch_sizes):
+            metrics = self.run_batch_benchmark(batch_size)
+            all_metrics.append(metrics)
+
+        # Stop profiler and wait for trace file
+        self.engine.stop_profile()
+        print("\nProfiler stopped. Waiting for trace file...")
+        self._monitor_trace_file(known_files, self.config.profile_dir)
+
+        return all_metrics
+
+    @staticmethod
+    def _monitor_trace_file(known_files, directory, interval=1):
+        """Monitor directory for new trace files from profiler."""
+        print(f"Monitoring {directory} for new trace files...")
+        while True:
+            flag = False
+            time.sleep(interval)
+            current_files = set(os.listdir(directory))
+            new_files = current_files - known_files
+            for new_file in new_files:
+                new_file_path = os.path.join(directory, new_file)
+                print(f"New file detected: {new_file}")
+                previous_size = 0
+                while True:
+                    try:
+                        current_size = os.path.getsize(new_file_path)
+                    except FileNotFoundError:
+                        print(f"File {new_file} is no longer accessible.")
+                        break
+                    if current_size > previous_size:
+                        previous_size = current_size
+                    else:
+                        flag = True
+                        break
+                    time.sleep(interval)
+            if flag:
+                break
+
     def save_results(self, metrics: List[BatchMetrics]) -> Tuple[str, str, str]:
         """Save benchmark results to files."""
         output_dir = Path(self.config.output_dir)
@@ -703,6 +781,20 @@ Process:
         help="Random seed for reproducibility (default: 42)"
     )
 
+    # Profiling
+    parser.add_argument(
+        "--profile",
+        "-p",
+        action="store_true",
+        help="Enable torch profiling via SGLang's built-in profiler"
+    )
+    parser.add_argument(
+        "--profile-dir",
+        type=str,
+        default="sglang_profile",
+        help="Directory to save profiler output (default: sglang_profile)"
+    )
+
     args = parser.parse_args()
 
     # Parse batch sizes
@@ -723,14 +815,20 @@ Process:
         seed=args.seed,
         device=args.device,
         dtype=args.dtype,
-        trust_remote_code=args.trust_remote_code
+        trust_remote_code=args.trust_remote_code,
+        profile=args.profile,
+        profile_dir=args.profile_dir
     )
 
     # Run benchmark
     benchmark = WhisperOfflineBenchmark(config)
 
     try:
-        metrics = benchmark.run_full_benchmark()
+        if config.profile:
+            metrics = benchmark.run_profiling()
+        else:
+            metrics = benchmark.run_full_benchmark()
+
         benchmark.print_summary_table(metrics)
         json_path, csv_path, excel_path = benchmark.save_results(metrics)
 
@@ -741,6 +839,8 @@ Process:
         print(f"  - JSON Summary: {json_path}")
         print(f"  - CSV Details:  {csv_path}")
         print(f"  - Excel Report: {excel_path}")
+        if config.profile:
+            print(f"  - Profile Dir:  {config.profile_dir}")
 
     except KeyboardInterrupt:
         print("\n\nBenchmark interrupted by user.")
