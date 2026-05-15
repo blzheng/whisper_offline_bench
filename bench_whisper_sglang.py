@@ -189,6 +189,7 @@ class WhisperOfflineBenchmark:
                 trust_remote_code=self.config.trust_remote_code,
                 disable_overlap_schedule=True,
                 log_level="warning",
+                chunked_prefill_size=-1,
             )
             print("Model loaded successfully!")
 
