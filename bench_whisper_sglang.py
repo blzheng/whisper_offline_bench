@@ -111,6 +111,8 @@ class BenchmarkConfig:
     device: str
     dtype: str
     trust_remote_code: bool
+    mem_fraction_static: Optional[float] = None
+    max_total_tokens: Optional[int] = None
     profile: bool = False
     profile_dir: str = "sglang_profile"
 
@@ -190,6 +192,8 @@ class WhisperOfflineBenchmark:
                 disable_overlap_schedule=True,
                 log_level="warning",
                 chunked_prefill_size=-1,
+                mem_fraction_static=self.config.mem_fraction_static,
+                max_total_tokens=self.config.max_total_tokens
             )
             print("Model loaded successfully!")
 
@@ -782,6 +786,21 @@ Process:
         help="Random seed for reproducibility (default: 42)"
     )
 
+    # Memory configuration
+    parser.add_argument(
+        "--mem-fraction-static",
+        type=float,
+        default=0.8,
+        help="Fraction of memory to use for static allocation (model weights + KV cache). "
+    )
+    parser.add_argument(
+        "--max-total-tokens",
+        type=int,
+        default=65536,
+        help="Maximum total number of tokens in the KV cache pool per TP rank. "
+             "Controls memory usage directly."
+    )
+
     # Profiling
     parser.add_argument(
         "--profile",
@@ -817,6 +836,8 @@ Process:
         device=args.device,
         dtype=args.dtype,
         trust_remote_code=args.trust_remote_code,
+        mem_fraction_static=args.mem_fraction_static,
+        max_total_tokens=args.max_total_tokens,
         profile=args.profile,
         profile_dir=args.profile_dir
     )
