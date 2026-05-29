@@ -163,5 +163,18 @@ SGLANG_CPU_OMP_THREADS_BIND='0-31|32-63' python bench_whisper_sglang.py \
   --num-iterations 10
 ```
 
----
+#### With torch.compile Enabled
+
+```bash
+SGLANG_CPU_OMP_THREADS_BIND='0-31|32-63' python bench_whisper_sglang.py \
+  --model openai/whisper-medium \
+  --data-path ./dataset_100_30sec \
+  --batch-sizes 8,16 \
+  --output-dir ./results_profiled \
+  --cores "0-31|32-63" \
+  --tp 2 \
+  --enable-torch-compile \
+  --num-iterations 10
+```
+
 

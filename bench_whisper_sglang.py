@@ -113,6 +113,7 @@ class BenchmarkConfig:
     trust_remote_code: bool
     mem_fraction_static: Optional[float] = None
     max_total_tokens: Optional[int] = None
+    enable_torch_compile: bool = False
     profile: bool = False
     profile_dir: str = "sglang_profile"
 
@@ -193,7 +194,8 @@ class WhisperOfflineBenchmark:
                 log_level="warning",
                 chunked_prefill_size=-1,
                 mem_fraction_static=self.config.mem_fraction_static,
-                max_total_tokens=self.config.max_total_tokens
+                max_total_tokens=self.config.max_total_tokens,
+                enable_torch_compile=self.config.enable_torch_compile,
             )
             print("Model loaded successfully!")
 
@@ -801,6 +803,14 @@ Process:
              "Controls memory usage directly."
     )
 
+    # Torch compile
+    parser.add_argument(
+        "--enable-torch-compile",
+        action="store_true",
+        default=False,
+        help="Enable torch.compile for the model (default: False)"
+    )
+
     # Profiling
     parser.add_argument(
         "--profile",
@@ -838,6 +848,7 @@ Process:
         trust_remote_code=args.trust_remote_code,
         mem_fraction_static=args.mem_fraction_static,
         max_total_tokens=args.max_total_tokens,
+        enable_torch_compile=args.enable_torch_compile,
         profile=args.profile,
         profile_dir=args.profile_dir
     )
